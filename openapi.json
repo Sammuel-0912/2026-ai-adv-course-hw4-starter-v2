@@ -245,6 +245,10 @@
                   },
                   "isExpress": {
                     "type": "boolean"
+                  },
+                  "couponCode": {
+                    "type": "string",
+                    "description": "選填；FLOWER100、SPRING10，不分大小寫"
                   }
                 }
               }
@@ -287,8 +291,18 @@
                         "is_express": {
                           "type": "boolean"
                         },
+                        "coupon_code": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "以大寫記錄；未使用時為 null"
+                        },
+                        "discount": {
+                          "type": "integer",
+                          "description": "折抵商品小計的金額；未使用時為 0"
+                        },
                         "total_amount": {
-                          "type": "integer"
+                          "type": "integer",
+                          "description": "subtotal - discount + shipping_fee"
                         },
                         "status": {
                           "type": "string"
@@ -328,7 +342,7 @@
             }
           },
           "400": {
-            "description": "購物車為空或庫存不足或收件資訊缺失"
+            "description": "購物車為空、庫存不足、收件資訊缺失，或優惠碼無效（COUPON_INVALID）、已失效（COUPON_EXPIRED）、未達門檻（COUPON_MIN_SUBTOTAL_NOT_MET）"
           }
         }
       },
@@ -467,6 +481,13 @@
                         },
                         "is_express": {
                           "type": "boolean"
+                        },
+                        "coupon_code": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "discount": {
+                          "type": "integer"
                         },
                         "total_amount": {
                           "type": "integer"
@@ -901,7 +922,7 @@
             }
           },
           "400": {
-            "description": "庫存不足"
+            "description": "quantity 非正整數或庫存不足"
           },
           "404": {
             "description": "購物車項目不存在"

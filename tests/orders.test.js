@@ -50,6 +50,8 @@ describe('Orders API', () => {
     expect(res.body.data).toHaveProperty('shipping_method', 'convenience_store');
     expect(res.body.data).toHaveProperty('is_remote_area', true);
     expect(res.body.data).toHaveProperty('is_express', true);
+    expect(res.body.data).toHaveProperty('coupon_code', null);
+    expect(res.body.data).toHaveProperty('discount', 0);
     expect(res.body.data).toHaveProperty('total_amount');
     expect(res.body.data.total_amount).toBe(
       res.body.data.subtotal + res.body.data.shipping_fee
@@ -122,6 +124,8 @@ describe('Orders API', () => {
     expect(res.body.data).toHaveProperty('shipping_method', 'convenience_store');
     expect(res.body.data).toHaveProperty('is_remote_area', true);
     expect(res.body.data).toHaveProperty('is_express', true);
+    expect(res.body.data).toHaveProperty('coupon_code', null);
+    expect(res.body.data).toHaveProperty('discount', 0);
     expect(res.body.data.total_amount).toBe(
       res.body.data.subtotal + res.body.data.shipping_fee
     );
@@ -155,6 +159,25 @@ describe('Orders API', () => {
       .send({ action: 'success' });
     expect(pay.status).toBe(404);
     expect(pay.body).toHaveProperty('data', null);
+  });
+
+  it('should reject a non-string coupon code', async () => {
+    const res = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({
+        recipientName: '測試收件人',
+        recipientEmail: 'recipient@example.com',
+        recipientAddress: '台北市測試路 123 號',
+        shippingMethod: 'home_delivery',
+        isRemoteArea: false,
+        isExpress: false,
+        couponCode: 100,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('data', null);
+    expect(res.body).toHaveProperty('error', 'VALIDATION_ERROR');
   });
 
   it('should reject non-string recipient fields', async () => {

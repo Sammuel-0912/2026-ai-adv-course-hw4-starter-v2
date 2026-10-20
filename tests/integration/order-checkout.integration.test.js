@@ -340,6 +340,41 @@ describe('Order checkout integration flow', () => {
     )).toBe(true);
   });
 
+  it('persists the coupon and sends the discounted total to ECPay', async () => {
+    const product = createProduct({ price: 800 });
+    const member = await registerMember('coupon-member@example.com');
+    await addProductToCart(member.token, product.id, 2);
+
+    const response = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${member.token}`)
+      .send({ ...ORDER_PAYLOAD, couponCode: 'spring10' });
+
+    // 1600 - 160 = 1440 is below the free-shipping threshold: 60 + 200 + 250
+    expectEnvelope(response, 201);
+    expect(response.body.data).toMatchObject({
+      subtotal: 1600,
+      discount: 160,
+      coupon_code: 'SPRING10',
+      shipping_fee: 510,
+      total_amount: 1950
+    });
+
+    const persisted = db.prepare(
+      'SELECT subtotal, discount, coupon_code, shipping_fee, total_amount FROM orders WHERE id = ?'
+    ).get(response.body.data.id);
+    expect(persisted).toEqual({
+      subtotal: 1600,
+      discount: 160,
+      coupon_code: 'SPRING10',
+      shipping_fee: 510,
+      total_amount: 1950
+    });
+
+    const form = await request(app).get(`/ecpay/payment/${response.body.data.id}`);
+    expect(parseHiddenInputs(form.text)).toMatchObject({ TotalAmount: '1950' });
+  });
+
   it('marks the order paid after a successful mocked QueryTradeInfo response', async () => {
     const { token, order } = await createPendingOrder(primaryProduct, 'ecpay-paid@example.com');
     const fetchMock = vi.fn().mockResolvedValue({
