@@ -3,6 +3,7 @@ const db = require('../database');
 const authMiddleware = require('../middleware/authMiddleware');
 const { queryTradeInfo } = require('../utils/ecpay');
 const { SHIPPING_METHODS, calculateShipping } = require('../utils/shipping');
+const { applyCoupon } = require('../utils/coupon');
 const {
   serializeOrder,
   findOrderById,
@@ -59,6 +60,9 @@ function testEnvOnly(req, res, next) {
  *                 type: boolean
  *               isExpress:
  *                 type: boolean
+ *               couponCode:
+ *                 type: string
+ *                 description: 選填；FLOWER100、SPRING10，不分大小寫
  *     responses:
  *       201:
  *         description: 訂單建立成功
@@ -85,8 +89,16 @@ function testEnvOnly(req, res, next) {
  *                       type: boolean
  *                     is_express:
  *                       type: boolean
+ *                     coupon_code:
+ *                       type: string
+ *                       nullable: true
+ *                       description: 以大寫記錄；未使用時為 null
+ *                     discount:
+ *                       type: integer
+ *                       description: 折抵商品小計的金額；未使用時為 0
  *                     total_amount:
  *                       type: integer
+ *                       description: subtotal - discount + shipping_fee
  *                     status:
  *                       type: string
  *                     items:
@@ -108,7 +120,7 @@ function testEnvOnly(req, res, next) {
  *                 message:
  *                   type: string
  *       400:
- *         description: 購物車為空或庫存不足或收件資訊缺失
+ *         description: 購物車為空、庫存不足、收件資訊缺失，或優惠碼無效（COUPON_INVALID）、已失效（COUPON_EXPIRED）、未達門檻（COUPON_MIN_SUBTOTAL_NOT_MET）
  */
 router.post('/', (req, res) => {
   const {
@@ -117,7 +129,8 @@ router.post('/', (req, res) => {
     recipientAddress,
     shippingMethod,
     isRemoteArea,
-    isExpress
+    isExpress,
+    couponCode
   } = req.body;
   const userId = req.user.userId;
 
@@ -154,6 +167,14 @@ router.post('/', (req, res) => {
     });
   }
 
+  if (couponCode !== undefined && couponCode !== null && typeof couponCode !== 'string') {
+    return res.status(400).json({
+      data: null,
+      error: 'VALIDATION_ERROR',
+      message: 'couponCode 必須為字串'
+    });
+  }
+
   const cartItems = getCheckoutItems(userId);
 
   if (cartItems.length === 0) {
@@ -174,12 +195,23 @@ router.post('/', (req, res) => {
     });
   }
 
-  // Calculate the subtotal and server-authoritative shipping fee.
+  // Calculate the subtotal, coupon discount and server-authoritative shipping fee.
   const subtotal = cartItems.reduce(
     (sum, item) => sum + item.product_price * item.quantity, 0
   );
+
+  let coupon = { couponCode: null, discount: 0 };
+  if (isNonEmptyString(couponCode)) {
+    const result = applyCoupon({ code: couponCode, subtotal });
+    if (!result.ok) {
+      return res.status(400).json({ data: null, error: result.error, message: result.message });
+    }
+    coupon = result;
+  }
+
+  // The free-shipping threshold is judged on the discounted subtotal
   const shipping = calculateShipping({
-    subtotal,
+    subtotal: subtotal - coupon.discount,
     method: shippingMethod,
     isRemoteArea,
     isExpress
@@ -191,6 +223,7 @@ router.post('/', (req, res) => {
     delivery: { method: shippingMethod, isRemoteArea, isExpress },
     cartItems,
     subtotal,
+    coupon,
     shipping
   });
 
@@ -206,6 +239,8 @@ router.post('/', (req, res) => {
       shipping_method: order.shipping_method,
       is_remote_area: Boolean(order.is_remote_area),
       is_express: Boolean(order.is_express),
+      coupon_code: order.coupon_code,
+      discount: order.discount,
       total_amount: order.total_amount,
       status: order.status,
       items: orderItems,
@@ -318,6 +353,11 @@ router.get('/', (req, res) => {
  *                       type: boolean
  *                     is_express:
  *                       type: boolean
+ *                     coupon_code:
+ *                       type: string
+ *                       nullable: true
+ *                     discount:
+ *                       type: integer
  *                     total_amount:
  *                       type: integer
  *                     status:

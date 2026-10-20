@@ -34,6 +34,7 @@
 │   │   └── errorHandler.js         # 全域錯誤處理：依狀態碼對應錯誤碼與安全訊息，500 一律回「伺服器內部錯誤」
 │   ├── utils/
 │   │   ├── ecpay.js                # 綠界 ECPay 工具：CheckMacValue 簽章、URL 編碼、AIO 表單產生、QueryTradeInfo 查詢
+│   │   ├── coupon.js               # 結帳優惠碼純邏輯：優惠碼定義、門檻、折扣計算
 │   │   ├── shipping.js             # 配送費用純邏輯：基本運費、免運門檻、偏遠/急件附加費
 │   │   └── validators.js           # 共用輸入驗證：非空字串、選填字串、正整數
 │   ├── services/
@@ -109,6 +110,7 @@
     │   ├── coupon.test.js           # Issue A：結帳優惠碼
     │   ├── cancel-order.test.js     # Issue B：取消未付款訂單並回補庫存
     │   └── order-filter.test.js     # Issue C：我的訂單篩選與分頁
+    ├── coupon.test.js              # Coupon 模組單元測試
     ├── shipping.test.js            # Shipping 模組單元測試（13 項）
     ├── auth.test.js                # 認證 API 測試
     ├── products.test.js            # 商品 API 測試
@@ -373,7 +375,9 @@ server.js
 | shipping_method | TEXT | NOT NULL DEFAULT 'home_delivery' | `home_delivery` 或 `convenience_store` |
 | is_remote_area | INTEGER | NOT NULL DEFAULT 0 | 偏遠地區快照（0/1） |
 | is_express | INTEGER | NOT NULL DEFAULT 0 | 當日急件快照（0/1） |
-| total_amount | INTEGER | NOT NULL | 訂單總金額（`subtotal + shipping_fee`） |
+| coupon_code | TEXT | | 使用的優惠碼（大寫），未使用為 NULL |
+| discount | INTEGER | NOT NULL DEFAULT 0 | 優惠碼折抵金額 |
+| total_amount | INTEGER | NOT NULL | 訂單總金額（`subtotal - discount + shipping_fee`） |
 | status | TEXT | NOT NULL DEFAULT 'pending', CHECK IN ('pending','paid','failed') | 訂單狀態 |
 | merchant_trade_no | TEXT | 可為 NULL | 綠界交易編號（由 order_no 去除連字號產生，如 `ORD20260412A1B2C`） |
 | created_at | TEXT | NOT NULL DEFAULT datetime('now') | 建立時間 |
@@ -401,10 +405,11 @@ server.js
 ├─ 3. 檢查購物車是否為空 → 400 CART_EMPTY
 ├─ 4. 檢查每個品項庫存是否充足 → 400 STOCK_INSUFFICIENT（列出所有不足商品名稱）
 ├─ 5. 計算 subtotal = Σ(price × quantity)
-├─ 6. Shipping 模組計算 shippingFee 與 totalAmount = subtotal + shippingFee
-├─ 7. 生成 orderNo: ORD-YYYYMMDD-{5碼UUID}
+├─ 6. 有 couponCode 時 Coupon 模組計算 discount（無效 → 400，不進入 transaction）
+├─ 7. Shipping 模組以 subtotal - discount 計算 shippingFee 與 totalAmount
+├─ 8. 生成 orderNo: ORD-YYYYMMDD-{5碼UUID}
 │
-└─ 8. 🔒 Transaction 開始
+└─ 9. 🔒 Transaction 開始
      ├─ INSERT orders 記錄
      ├─ 對每個購物車品項：
      │   ├─ INSERT order_items（快照 product_name, product_price）
@@ -412,12 +417,16 @@ server.js
      └─ DELETE cart_items WHERE user_id = ?
      🔒 Transaction 結束
 │
-└─ 9. 回傳 201 + subtotal、shipping_fee、total_amount 與訂單詳情
+└─ 10. 回傳 201 + subtotal、discount、shipping_fee、total_amount、coupon_code 與訂單詳情
 ```
 
 ## Shipping 模組
 
 `src/utils/shipping.js` 不依賴 Express 或資料庫，專責根據 `subtotal`、配送方式、偏遠地區與當日急件條件，計算基本運費、附加費、最終運費與訂單總額。滿 1,500 元僅免基本運費，附加費仍依條件累加。建立訂單路由不接受前端自行計算的金額。
+
+## Coupon 模組
+
+`src/utils/coupon.js` 同樣不依賴 Express 或資料庫，只根據優惠碼與商品小計判斷是否可用並計算折扣。折扣只作用於商品小計；路由再以折扣後的小計交給 Shipping 模組，因此免運門檻以折扣後金額判斷。
 
 ## 綠界金流付款流程
 
