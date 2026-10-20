@@ -396,7 +396,9 @@ describe('Order checkout integration flow', () => {
       .send(ORDER_PAYLOAD);
 
     // Orders placed within the same second must still page in insert order
-    db.prepare("UPDATE orders SET created_at = '2026-01-01 00:00:00'").run();
+    db.prepare(
+      "UPDATE orders SET created_at = '2026-01-01 00:00:00' WHERE user_id IN (?, ?)"
+    ).run(member.user.id, other.user.id);
     const setStatus = db.prepare('UPDATE orders SET status = ? WHERE id = ?');
     setStatus.run('paid', placed[1]);
     setStatus.run('failed', placed[3]);

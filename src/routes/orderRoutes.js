@@ -364,11 +364,16 @@ router.get('/', (req, res) => {
   }
 
   const limit = Math.min(requestedLimit, MAX_PAGE_SIZE);
-  const { orders, total } = listOrdersForUser(req.user.userId, {
-    status,
-    limit,
-    offset: (page - 1) * limit
-  });
+  const offset = (page - 1) * limit;
+  if (!Number.isSafeInteger(offset)) {
+    return res.status(400).json({
+      data: null,
+      error: 'VALIDATION_ERROR',
+      message: 'page 超出可查詢範圍'
+    });
+  }
+
+  const { orders, total } = listOrdersForUser(req.user.userId, { status, limit, offset });
 
   res.json({
     data: {

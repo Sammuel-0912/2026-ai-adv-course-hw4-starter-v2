@@ -114,7 +114,9 @@ describe('Orders API', () => {
     const queries = [
       '?status=unknown', '?status=', '?status=PAID',
       '?page=0', '?page=-1', '?page=1.5', '?page=abc', '?page=', '?page=1&page=2',
-      '?limit=0', '?limit=-1', '?limit=2.5', '?limit=ten'
+      '?limit=0', '?limit=-1', '?limit=2.5', '?limit=ten',
+      // Beyond Number.MAX_SAFE_INTEGER, or an offset that overflows it
+      '?page=99999999999999999999', '?page=9007199254740991'
     ];
 
     for (const query of queries) {

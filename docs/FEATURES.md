@@ -331,6 +331,9 @@
 }
 ```
 
+- 沒有訂單時 `total` 與 `totalPages` 為 0；頁碼超出範圍時回傳空陣列
+- `limit` 超過 50 時，回應中的 `pagination.limit` 為 50
+
 **訂單欄位**：id, order_no, subtotal, discount, coupon_code, shipping_fee, shipping_method, is_remote_area, is_express, total_amount, status, created_at
 
 **錯誤情境**：
@@ -338,7 +341,7 @@
 | 狀態碼 | 錯誤碼 | 情境 |
 |--------|--------|------|
 | 400 | VALIDATION_ERROR | `status` 不在允許值內 |
-| 400 | VALIDATION_ERROR | `page` 或 `limit` 不是正整數（含 0、負數、小數、空字串、重複參數） |
+| 400 | VALIDATION_ERROR | `page` 或 `limit` 不是正整數（含 0、負數、小數、空字串、重複參數、超過安全整數範圍） |
 
 ### GET /api/orders/:id — 訂單詳情
 
