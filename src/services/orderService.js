@@ -1,6 +1,8 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../database');
 
+const ORDER_STATUSES = Object.freeze(['pending', 'paid', 'failed']);
+
 function generateOrderNo() {
   // Use Taipei date so the order number matches ECPay MerchantTradeDate
   const dateStr = new Date()
@@ -26,12 +28,25 @@ function findOrderForUser(orderId, userId) {
   return db.prepare('SELECT * FROM orders WHERE id = ? AND user_id = ?').get(orderId, userId);
 }
 
-function listOrdersForUser(userId) {
-  return db.prepare(
-    `SELECT id, order_no, subtotal, shipping_fee, shipping_method,
+/**
+ * One page of the member's orders, newest first, optionally filtered by status.
+ * Returns { orders, total } where total ignores paging.
+ */
+function listOrdersForUser(userId, { status, limit, offset }) {
+  const where = status ? 'WHERE user_id = ? AND status = ?' : 'WHERE user_id = ?';
+  const params = status ? [userId, status] : [userId];
+
+  const total = db.prepare(`SELECT COUNT(*) AS count FROM orders ${where}`).get(...params).count;
+  // created_at has one-second precision; rowid keeps same-second orders in insert order
+  const orders = db.prepare(
+    `SELECT id, order_no, subtotal, discount, coupon_code, shipping_fee, shipping_method,
             is_remote_area, is_express, total_amount, status, created_at
-     FROM orders WHERE user_id = ? ORDER BY created_at DESC`
-  ).all(userId);
+     FROM orders ${where}
+     ORDER BY created_at DESC, rowid DESC
+     LIMIT ? OFFSET ?`
+  ).all(...params, limit, offset);
+
+  return { orders, total };
 }
 
 function getOrderItems(orderId) {
@@ -115,6 +130,7 @@ function createOrderFromCart({ userId, recipient, delivery, cartItems, subtotal,
 }
 
 module.exports = {
+  ORDER_STATUSES,
   generateOrderNo,
   serializeOrder,
   findOrderById,

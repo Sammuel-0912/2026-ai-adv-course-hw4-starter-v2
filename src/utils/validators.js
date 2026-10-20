@@ -10,11 +10,12 @@ function isOptionalString(value) {
 
 /**
  * Parse a positive integer from a number or an integer string.
- * Returns null for anything else ("3abc", 1.9, [5], 0, -1).
+ * Returns null for anything else ("3abc", 1.9, [5], 0, -1) and for values
+ * beyond Number.MAX_SAFE_INTEGER, which SQLite bindings cannot represent exactly.
  */
 function parsePositiveInteger(value) {
   const parsed = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value;
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 module.exports = {

@@ -375,6 +375,58 @@ describe('Order checkout integration flow', () => {
     expect(parseHiddenInputs(form.text)).toMatchObject({ TotalAmount: '1950' });
   });
 
+  it('filters and pages only the member own orders, newest first', async () => {
+    const member = await registerMember('order-list-member@example.com');
+    const other = await registerMember('order-list-other@example.com');
+    const placed = [];
+
+    for (let i = 0; i < 7; i++) {
+      await addProductToCart(member.token, primaryProduct.id, 1);
+      const response = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${member.token}`)
+        .send(ORDER_PAYLOAD);
+      expectEnvelope(response, 201);
+      placed.push(response.body.data.id);
+    }
+    await addProductToCart(other.token, primaryProduct.id, 1);
+    await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${other.token}`)
+      .send(ORDER_PAYLOAD);
+
+    // Orders placed within the same second must still page in insert order
+    db.prepare(
+      "UPDATE orders SET created_at = '2026-01-01 00:00:00' WHERE user_id IN (?, ?)"
+    ).run(member.user.id, other.user.id);
+    const setStatus = db.prepare('UPDATE orders SET status = ? WHERE id = ?');
+    setStatus.run('paid', placed[1]);
+    setStatus.run('failed', placed[3]);
+    setStatus.run('paid', placed[5]);
+
+    const pages = [];
+    for (const page of [1, 2, 3]) {
+      const response = await request(app)
+        .get(`/api/orders?page=${page}&limit=3`)
+        .set('Authorization', `Bearer ${member.token}`);
+      expectEnvelope(response, 200);
+      expect(response.body.data.pagination).toEqual({ page, limit: 3, total: 7, totalPages: 3 });
+      pages.push(...response.body.data.orders.map(order => order.id));
+    }
+    expect(pages).toEqual([...placed].reverse());
+
+    const paid = await request(app)
+      .get('/api/orders?status=paid')
+      .set('Authorization', `Bearer ${member.token}`);
+    expect(paid.body.data.orders.map(order => order.id)).toEqual([placed[5], placed[1]]);
+    expect(paid.body.data.pagination).toEqual({ page: 1, limit: 10, total: 2, totalPages: 1 });
+
+    const failed = await request(app)
+      .get('/api/orders?status=failed')
+      .set('Authorization', `Bearer ${member.token}`);
+    expect(failed.body.data.orders.map(order => order.id)).toEqual([placed[3]]);
+  });
+
   it('marks the order paid after a successful mocked QueryTradeInfo response', async () => {
     const { token, order } = await createPendingOrder(primaryProduct, 'ecpay-paid@example.com');
     const fetchMock = vi.fn().mockResolvedValue({

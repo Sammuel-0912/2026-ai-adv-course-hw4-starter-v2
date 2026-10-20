@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Added
+- 我的訂單篩選與分頁（Issue #4）：`GET /api/orders` 支援 `status`、`page`、`limit`（預設 10、上限 50），回應新增 `pagination`；不合法參數回 400。前台「我的訂單」頁加上分頁按鈕
 - 結帳優惠碼（Issue #1）：新增 `src/utils/coupon.js`（`FLOWER100`、`SPRING10`、已失效的 `SUMMER50`）；`POST /api/orders` 接受選填的 `couponCode`，訂單記錄 `coupon_code` 與 `discount`，建單與 `GET /api/orders/:id` 皆回傳；免運門檻改以折扣後的商品小計判斷
 - `orders` 資料表新增 `coupon_code`、`discount` 欄位（既有資料庫自動 migration，舊訂單 `discount` 為 0）
 - 前台訂單詳情與後台訂單明細在有折扣時顯示「優惠折抵（優惠碼）」

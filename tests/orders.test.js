@@ -107,6 +107,37 @@ describe('Orders API', () => {
     expect(res.body.data).toHaveProperty('orders');
     expect(Array.isArray(res.body.data.orders)).toBe(true);
     expect(res.body.data.orders.length).toBeGreaterThan(0);
+    expect(res.body.data.pagination).toEqual({ page: 1, limit: 10, total: 1, totalPages: 1 });
+  });
+
+  it('should reject invalid order list query parameters', async () => {
+    const queries = [
+      '?status=unknown', '?status=', '?status=PAID',
+      '?page=0', '?page=-1', '?page=1.5', '?page=abc', '?page=', '?page=1&page=2',
+      '?limit=0', '?limit=-1', '?limit=2.5', '?limit=ten',
+      // Beyond Number.MAX_SAFE_INTEGER, or an offset that overflows it
+      '?page=99999999999999999999', '?page=9007199254740991'
+    ];
+
+    for (const query of queries) {
+      const res = await request(app)
+        .get(`/api/orders${query}`)
+        .set('Authorization', `Bearer ${userToken}`);
+
+      expect(res.status, query).toBe(400);
+      expect(res.body).toHaveProperty('data', null);
+      expect(res.body).toHaveProperty('error', 'VALIDATION_ERROR');
+    }
+  });
+
+  it('should cap limit at 50 and return an empty page past the end', async () => {
+    const res = await request(app)
+      .get('/api/orders?page=2&limit=999')
+      .set('Authorization', `Bearer ${userToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.orders).toEqual([]);
+    expect(res.body.data.pagination).toEqual({ page: 2, limit: 50, total: 1, totalPages: 1 });
   });
 
   it('should get order detail', async () => {

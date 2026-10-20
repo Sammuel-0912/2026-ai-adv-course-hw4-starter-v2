@@ -13,10 +13,10 @@
 ## 執行指令
 
 ```bash
-# 單元與 API 測試（8 個檔案、77 項測試）
+# 單元與 API 測試（8 個檔案、79 項測試）
 npm run test:unit
 
-# 結帳、訂單、優惠碼、DB、庫存、回滾與綠界整合測試（11 項測試）
+# 結帳、訂單、優惠碼、DB、庫存、回滾與綠界整合測試（12 項測試）
 npm run test:integration
 
 # 已另行啟動 http://localhost:3001 後，執行真實付款 E2E
@@ -139,7 +139,7 @@ Integration Test 中有兩層防護：
 | `tests/auth.test.js` | 註冊、登入、重複 Email、個人資料、非字串欄位、JSON 格式錯誤 |
 | `tests/products.test.js` | 商品列表、分頁、詳情與 404 |
 | `tests/cart.test.js` | 訪客/會員購物車 CRUD、數量驗證、登入/註冊時合併訪客購物車（含庫存上限） |
-| `tests/orders.test.js` | 建單、配送費、查詢與認證、模擬付款僅限測試環境 |
+| `tests/orders.test.js` | 建單、配送費、優惠碼欄位、查詢與認證、列表分頁與參數驗證、他人訂單 404、模擬付款僅限測試環境 |
 | `tests/adminProducts.test.js` | 後台商品 CRUD 與權限、刪除仍在購物車中的商品、名稱驗證 |
 | `tests/adminOrders.test.js` | 後台訂單列表、詳情與篩選 |
 
@@ -161,7 +161,9 @@ Integration Test 中有兩層防護：
 | transaction 回滾 | 臨時 SQLite trigger 使第二筆品項寫入失敗，驗證訂單/品項/庫存/購物車全數回滾 |
 | ECPay AIO 表單 | staging action、MerchantTradeNo、TotalAmount、ItemName、URL 與 CheckMacValue |
 | QueryTradeInfo | mock 已付（附有效 CheckMacValue）、未付、HTTP 錯誤；驗證 API 與 DB 狀態 |
-| QueryTradeInfo 驗證 | 簽章遭竄改、金額不符的「已付」回應皆回 500，訂單維持 pending |
+| QueryTradeInfo 驗證 | 簽章遭竄改、缺少簽章、金額不符的「已付」回應皆回 500，訂單維持 pending |
+| 優惠碼 | 優惠碼與折扣快照寫入 DB，ECPay `TotalAmount` 為折扣後總額 |
+| 我的訂單分頁 | 同秒建立的訂單跨頁不重複、不遺漏；`status` 篩選；不含其他會員訂單 |
 
 ### 成功建單資料
 
