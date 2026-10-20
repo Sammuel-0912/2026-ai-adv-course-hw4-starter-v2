@@ -5,6 +5,7 @@ const { queryTradeInfo } = require('../utils/ecpay');
 const { SHIPPING_METHODS, calculateShipping } = require('../utils/shipping');
 const { applyCoupon } = require('../utils/coupon');
 const {
+  ORDER_STATUSES,
   serializeOrder,
   findOrderById,
   findOrderForUser,
@@ -16,9 +17,12 @@ const {
   createOrderFromCart
 } = require('../services/orderService');
 const { isTradePaid, markOrderPaid } = require('../services/paymentService');
-const { isNonEmptyString } = require('../utils/validators');
+const { isNonEmptyString, parsePositiveInteger } = require('../utils/validators');
 
 const router = express.Router();
+
+const DEFAULT_PAGE_SIZE = 10;
+const MAX_PAGE_SIZE = 50;
 
 router.use(authMiddleware);
 
@@ -255,10 +259,29 @@ router.post('/', (req, res) => {
  * @openapi
  * /api/orders:
  *   get:
- *     summary: 自己的訂單列表
+ *     summary: 自己的訂單列表（支援狀態篩選與分頁）
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, paid, failed]
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         description: 每頁筆數，超過 50 以 50 計
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 10
  *     responses:
  *       200:
  *         description: 成功
@@ -285,23 +308,73 @@ router.post('/', (req, res) => {
  *                             type: integer
  *                           shipping_method:
  *                             type: string
+ *                           is_remote_area:
+ *                             type: boolean
+ *                           is_express:
+ *                             type: boolean
+ *                           coupon_code:
+ *                             type: string
+ *                             nullable: true
+ *                           discount:
+ *                             type: integer
  *                           total_amount:
  *                             type: integer
  *                           status:
  *                             type: string
  *                           created_at:
  *                             type: string
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         page:
+ *                           type: integer
+ *                         limit:
+ *                           type: integer
+ *                         total:
+ *                           type: integer
+ *                         totalPages:
+ *                           type: integer
  *                 error:
  *                   type: string
  *                   nullable: true
  *                 message:
  *                   type: string
+ *       400:
+ *         description: status 不在允許值內，或 page、limit 不是正整數
  */
 router.get('/', (req, res) => {
-  const orders = listOrdersForUser(req.user.userId);
+  const { status } = req.query;
+  const page = req.query.page === undefined ? 1 : parsePositiveInteger(req.query.page);
+  const requestedLimit = req.query.limit === undefined ? DEFAULT_PAGE_SIZE : parsePositiveInteger(req.query.limit);
+
+  if (status !== undefined && !ORDER_STATUSES.includes(status)) {
+    return res.status(400).json({
+      data: null,
+      error: 'VALIDATION_ERROR',
+      message: `status 必須為 ${ORDER_STATUSES.join('、')} 其中之一`
+    });
+  }
+
+  if (page === null || requestedLimit === null) {
+    return res.status(400).json({
+      data: null,
+      error: 'VALIDATION_ERROR',
+      message: 'page 與 limit 必須為正整數'
+    });
+  }
+
+  const limit = Math.min(requestedLimit, MAX_PAGE_SIZE);
+  const { orders, total } = listOrdersForUser(req.user.userId, {
+    status,
+    limit,
+    offset: (page - 1) * limit
+  });
 
   res.json({
-    data: { orders: orders.map(serializeOrder) },
+    data: {
+      orders: orders.map(serializeOrder),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    },
     error: null,
     message: '成功'
   });
